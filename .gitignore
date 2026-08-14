@@ -1,0 +1,15 @@
+.gradle/
+.idea/
+.vscode/
+dist/
+out/
+**/build/
+**/run/
+.DS_Store
+*.uniqueId*
+*.iml
+Thumbs.db
+/crash-*.txt
+
+# Local-only backup and temporary files
+/local-files/

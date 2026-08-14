@@ -1,0 +1,3 @@
+[tools]
+java = "zulu-21"
+"vfox:mise-plugins/vfox-gradle" = "9.5.1"

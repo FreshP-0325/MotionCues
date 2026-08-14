@@ -1,0 +1,135 @@
+plugins {
+    id 'net.fabricmc.fabric-loom-remap' version '1.17.16'
+}
+
+apply from: '../targets.gradle'
+def target = requireMotionCuesTarget(false)
+def targetFabricLoader =
+        target.fabricLoader ?: fabricLoaderVersion
+
+group = 'io.github.freshp_0325.motioncues'
+version = motionCuesVersion
+
+base {
+    archivesName =
+            "motion-cues-fabric-mc${target.minecraftVersion}"
+}
+
+layout.buildDirectory =
+        file("build/${target.minecraftVersion}")
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.fabricmc.net/' }
+    maven { url = 'https://maven.shedaniel.me/' }
+    maven {
+        url =
+                'https://maven.terraformersmc.com/releases/'
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${target.minecraftVersion}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${targetFabricLoader}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${target.fabricApi}"
+    modImplementation "me.shedaniel.cloth:cloth-config-fabric:${target.cloth}"
+    modCompileOnly "com.terraformersmc:modmenu:${target.modMenu}"
+}
+
+java {
+    toolchain.languageVersion =
+            JavaLanguageVersion.of(target.java as int)
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = target.java as int
+}
+
+def generatedCommon =
+        layout.buildDirectory.dir('generated/common')
+def generatedLoader =
+        layout.buildDirectory.dir('generated/loader')
+
+def prepareLoaderSources =
+        tasks.register('prepareLoaderSources', Sync) {
+    from('src/main/java') {
+        if (target.manualShaderRegistration) {
+            exclude '**/MotionCuesFabric.java'
+        }
+    }
+    if (target.manualShaderRegistration) {
+        from('src/manual-shader/java')
+    }
+    into generatedLoader
+}
+
+def prepareCommonSources =
+        tasks.register('prepareCommonSources', Sync) {
+    from('../../common/src/main/java') {
+        if (!target.manualShaderRegistration) {
+            exclude '**/MotionCuesRenderer.java'
+        }
+        if (target.keyCategorySource) {
+            exclude '**/MotionCuesKeyMappings.java'
+        }
+    }
+    if (!target.manualShaderRegistration) {
+        from("../shared/src/${target.compatibility}/java")
+    }
+    if (target.keyCategorySource) {
+        from("../shared/src/${target.keyCategorySource}/java")
+    }
+    into generatedCommon
+}
+
+sourceSets.main.java.srcDirs = [
+        generatedLoader,
+        generatedCommon
+]
+sourceSets.main.resources.srcDirs = [
+        'src/main/resources',
+        '../../common/src/main/resources',
+        "../shared/src/${target.compatibility}/resources"
+]
+tasks.named('compileJava') {
+    dependsOn prepareLoaderSources
+    dependsOn prepareCommonSources
+}
+
+processResources {
+    inputs.properties(
+            mod_version: project.version,
+            minecraft_version: target.minecraftVersion,
+            java_version: target.java,
+            fabric_loader_version: targetFabricLoader,
+            cloth_config_version: target.cloth)
+    filesMatching('fabric.mod.json') {
+        expand(
+                mod_version: project.version,
+                minecraft_version: target.minecraftVersion,
+                java_version: target.java,
+                fabric_loader_version: targetFabricLoader,
+                cloth_config_version: target.cloth)
+    }
+    filesMatching(
+            'assets/motion_cues/shaders/core/' +
+                    'adaptive_contrast.json') {
+        filter { line ->
+            target.manualShaderRegistration
+                    ? line
+                    : line.replace(
+                            '"motion_cues:adaptive_contrast"',
+                            '"motion_cues:core/adaptive_contrast"')
+        }
+    }
+}
+
+tasks.register('exportJar', Copy) {
+    dependsOn tasks.named('remapJar')
+    from tasks.named('remapJar')
+            .flatMap { it.archiveFile }
+    into '../../dist'
+}

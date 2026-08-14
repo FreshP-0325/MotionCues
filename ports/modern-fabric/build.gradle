@@ -1,0 +1,124 @@
+plugins {
+    id 'fabric-loom' version '1.17.16'
+}
+
+apply from: '../targets.gradle'
+def target = requireMotionCuesTarget(true)
+def is262 = target.minecraftVersion == '26.2'
+
+loom {
+    noIntermediateMappings()
+}
+
+group = 'io.github.freshp_0325.motioncues'
+version = motionCuesVersion
+
+base { archivesName = "motion-cues-fabric-mc${target.minecraftVersion}" }
+layout.buildDirectory = file("build/${target.minecraftVersion}")
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.fabricmc.net/' }
+    maven { url = 'https://maven.shedaniel.me/' }
+    maven { url = 'https://maven.terraformersmc.com/releases/' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${target.minecraftVersion}"
+    mappings files('unobfuscated-mappings.jar')
+    modImplementation "net.fabricmc:fabric-loader:${fabricLoaderVersion}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${target.fabricApi}"
+    modImplementation "me.shedaniel.cloth:cloth-config-fabric:${target.cloth}"
+    modCompileOnly "com.terraformersmc:modmenu:${target.modMenu}"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+    withSourcesJar()
+}
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 25
+}
+
+def generatedCommon = layout.buildDirectory.dir('generated/common')
+def generatedLoader = layout.buildDirectory.dir('generated/loader')
+def generatedResources = layout.buildDirectory.dir('generated/resources')
+
+def transform262 = { String line ->
+    if (!is262) return line
+    line.replace('minecraft.gameRenderer.getMainCamera()', 'minecraft.gameRenderer.mainCamera()')
+        .replace('minecraft.options.hideGui', 'minecraft.gameRenderer.gameRenderState().guiRenderState.isHudHidden')
+        .replace('minecraft.screen', 'minecraft.gui.screen()')
+        .replace('minecraft.setScreen(', 'minecraft.gui.setScreen(')
+}
+
+def prepareCommonSources = tasks.register('prepareCommonSources', Sync) {
+    from('../../common/src/main/java') {
+        exclude '**/MotionCuesRenderer.java'
+        exclude '**/MotionCuesKeyMappings.java'
+        filter { line -> transform262(line
+            .replace('GuiGraphics', 'GuiGraphicsExtractor')
+            .replace('checkbox.render(', 'checkbox.extractRenderState(')) }
+    }
+    from('../shared/src/modern/java') {
+        filter { line ->
+            String value = transform262(line)
+            if (is262) {
+                value = value
+                    .replace('import com.mojang.blaze3d.vertex.VertexFormat;', 'import com.mojang.blaze3d.PrimitiveTopology;')
+                    .replace('.withVertexFormat(DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS)', '.withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)\n         .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)')
+                    .replace('.withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, VertexFormat.Mode.QUADS)', '.withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)\n         .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)')
+                    .replace('private static final boolean GUI_USES_QUAD_INDEX_BUFFER = true;', 'private static final boolean GUI_USES_QUAD_INDEX_BUFFER = false;')
+                    .replace('.withSampler("Sampler0")', '.withBindGroupLayout(net.minecraft.client.renderer.BindGroupLayouts.SAMPLER0)')
+                    .replace('minecraft.getMainRenderTarget()', 'minecraft.gameRenderer.mainRenderTarget()')
+                    .replace('new TextureTarget("Motion Cues background", main.width, main.height, false)', 'new TextureTarget("Motion Cues background", main.width, main.height, false, main.getColorTexture().getFormat())')
+            }
+            value
+        }
+    }
+    from('../shared/src/key-category-modern/java') {
+        filter { line -> transform262(line) }
+    }
+    into generatedCommon
+}
+
+def prepareLoaderSources = tasks.register('prepareLoaderSources', Sync) {
+    from('src/main/java') {
+        filter { line -> transform262(line) }
+    }
+    into generatedLoader
+}
+
+def prepareModernResources = tasks.register('prepareModernResources', Sync) {
+    from('../shared/src/identifier/resources') {
+        if (is262) {
+            filesMatching('**/adaptive_contrast_gpu.fsh') {
+                filter { line -> line.replace('fragColor = vec4(mix(background, target, strength), 1.0);', 'fragColor = vec4(target, strength);') }
+            }
+        }
+    }
+    into generatedResources
+}
+
+sourceSets.main.java.srcDirs = [generatedLoader, generatedCommon]
+sourceSets.main.resources.srcDirs = ['src/main/resources', '../../common/src/main/resources', generatedResources]
+tasks.named('compileJava') { dependsOn prepareLoaderSources, prepareCommonSources }
+tasks.named('processResources') { dependsOn prepareModernResources }
+
+processResources {
+    inputs.properties(mod_version: project.version, minecraft_version: target.minecraftVersion,
+        java_version: 25, fabric_loader_version: fabricLoaderVersion,
+        cloth_config_version: target.cloth)
+    filesMatching('fabric.mod.json') {
+        expand(mod_version: project.version, minecraft_version: target.minecraftVersion,
+            java_version: 25, fabric_loader_version: fabricLoaderVersion,
+            cloth_config_version: target.cloth)
+    }
+}
+
+tasks.register('exportJar', Copy) {
+    dependsOn tasks.named('remapJar')
+    from tasks.named('remapJar').flatMap { it.archiveFile }
+    into '../../dist'
+}

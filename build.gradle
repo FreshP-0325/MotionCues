@@ -1,0 +1,20 @@
+group = 'io.github.freshp_0325.motioncues'
+version = '0.6.6'
+
+tasks.register('exportFabric1211', GradleBuild) {
+    dir = 'ports/legacy-fabric'
+    tasks = ['exportJar']
+    startParameter.projectProperties = [mcVersion: '1.21.1']
+}
+
+tasks.register('exportNeoForge1211', GradleBuild) {
+    dir = 'ports/legacy-neoforge'
+    tasks = ['exportJar']
+    startParameter.projectProperties = [mcVersion: '1.21.1']
+}
+
+tasks.register('buildAll') {
+    group = 'build'
+    description = 'Builds the primary Fabric and NeoForge 1.21.1 artifacts.'
+    dependsOn 'exportFabric1211', 'exportNeoForge1211'
+}

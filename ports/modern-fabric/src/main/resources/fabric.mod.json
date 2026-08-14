@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "motion_cues",
+  "version": "${mod_version}",
+  "name": "Motion Cues",
+  "description": "Adds camera-relative 3D motion cues for player movement and camera rotation, including walking, sprinting, flying, and vehicles.",
+  "icon": "motion_cues.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["io.github.freshp_0325.motioncues.fabric.MotionCuesFabric"],
+    "modmenu": ["io.github.freshp_0325.motioncues.fabric.MotionCuesModMenu"]
+  },
+  "depends": {
+    "fabricloader": ">=${fabric_loader_version}",
+    "minecraft": "${minecraft_version}",
+    "java": ">=${java_version}",
+    "fabric-api": "*",
+    "cloth-config": ">=${cloth_config_version}"
+  }
+}

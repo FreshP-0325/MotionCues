@@ -1,0 +1,32 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+
+[[mods]]
+modId="motion_cues"
+version="${mod_version}"
+displayName="Motion Cues"
+logoFile="motion_cues.png"
+logoBlur=true
+description='''Adds camera-relative 3D motion cues for player movement and camera rotation, including walking, sprinting, flying, and vehicles.'''
+
+[[dependencies.motion_cues]]
+modId="neoforge"
+type="required"
+versionRange="[1,)"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.motion_cues]]
+modId="minecraft"
+type="required"
+versionRange="[${minecraft_version}]"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.motion_cues]]
+modId="cloth_config"
+type="required"
+versionRange="[${cloth_config_version},)"
+ordering="NONE"
+side="CLIENT"

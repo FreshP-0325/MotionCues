@@ -1,0 +1,151 @@
+plugins {
+    id 'net.neoforged.moddev' version '2.0.141'
+}
+
+apply from: '../targets.gradle'
+def target = requireMotionCuesTarget(false)
+
+group = 'io.github.freshp_0325.motioncues'
+version = motionCuesVersion
+
+base {
+    archivesName =
+            "motion-cues-neoforge-mc${target.minecraftVersion}"
+}
+
+layout.buildDirectory =
+        file("build/${target.minecraftVersion}")
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.neoforged.net/releases' }
+    maven { url = 'https://maven.shedaniel.me/' }
+}
+
+dependencies {
+    implementation "me.shedaniel.cloth:cloth-config-neoforge:${target.cloth}"
+}
+
+neoForge {
+    version = target.neoForge
+    runs {
+        client { client() }
+    }
+    mods {
+        motion_cues { sourceSet sourceSets.main }
+    }
+}
+
+java {
+    toolchain.languageVersion =
+            JavaLanguageVersion.of(target.java as int)
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = target.java as int
+}
+
+def generatedCommon =
+        layout.buildDirectory.dir('generated/common')
+def generatedLoader =
+        layout.buildDirectory.dir('generated/loader')
+
+def prepareLoaderSources =
+        tasks.register('prepareLoaderSources', Sync) {
+    from(target.manualShaderRegistration
+            ? 'src/manual-shader/java'
+            : 'src/main/java') {
+        filter { line ->
+            if (target.compatibility != 'identifier') {
+                return line
+            }
+            line.replace('ResourceLocation', 'Identifier')
+        }
+    }
+    into generatedLoader
+}
+
+def prepareCommonSources =
+        tasks.register('prepareCommonSources', Sync) {
+    from('../../common/src/main/java') {
+        if (!target.manualShaderRegistration) {
+            exclude '**/MotionCuesRenderer.java'
+        }
+        if (target.keyCategorySource) {
+            exclude '**/MotionCuesKeyMappings.java'
+        }
+    }
+    if (!target.manualShaderRegistration) {
+        from("../shared/src/${target.compatibility}/java") {
+            filter { line ->
+                line.replace(
+                        'return RenderPipelines.register(pipeline);',
+                        'return pipeline;')
+                        .replace(
+                                'graphics.guiRenderState',
+                                'graphics')
+                        .replace(
+                                '.submitGuiElement(',
+                                '.submitGuiElementRenderState(')
+            }
+        }
+    }
+    if (target.keyCategorySource) {
+        from("../shared/src/${target.keyCategorySource}/java")
+    }
+    into generatedCommon
+}
+
+sourceSets.main.java.srcDirs = [
+        generatedLoader,
+        generatedCommon
+]
+if (target.compatibility != 'legacy'
+        && !target.manualShaderRegistration) {
+    sourceSets.main.java.srcDir 'src/pipeline/java'
+}
+sourceSets.main.resources.srcDirs = [
+        'src/main/resources',
+        '../../common/src/main/resources',
+        "../shared/src/${target.compatibility}/resources"
+]
+tasks.named('compileJava') {
+    dependsOn prepareLoaderSources
+    dependsOn prepareCommonSources
+}
+
+processResources {
+    inputs.properties(
+            mod_version: project.version,
+            minecraft_version: target.minecraftVersion,
+            pack_format: target.packFormat,
+            cloth_config_version: target.cloth)
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(
+                mod_version: project.version,
+                minecraft_version: target.minecraftVersion,
+                cloth_config_version: target.cloth)
+    }
+    filesMatching('pack.mcmeta') {
+        expand(pack_format: target.packFormat)
+    }
+    filesMatching(
+            'assets/motion_cues/shaders/core/' +
+                    'adaptive_contrast.json') {
+        filter { line ->
+            target.manualShaderRegistration
+                    ? line
+                    : line.replace(
+                            '"motion_cues:adaptive_contrast"',
+                            '"motion_cues:core/adaptive_contrast"')
+        }
+    }
+}
+
+tasks.register('exportJar', Copy) {
+    dependsOn tasks.named('jar')
+    from tasks.named('jar').flatMap { it.archiveFile }
+    into '../../dist'
+}
